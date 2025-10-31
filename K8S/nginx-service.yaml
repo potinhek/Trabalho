@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service # Tipo de objeto: um Service
+metadata:
+  name: nginx-proxy-service # Nome do Service
+spec:
+  # Tipo NodePort expõe o serviço em uma porta estática em cada Nó (máquina)
+  # do cluster. Facilita o acesso durante o desenvolvimento.
+  type: NodePort 
+  selector:
+    app: nginx-proxy # Seleciona os Pods (do Deployment) que este serviço vai gerenciar
+  ports:
+    - protocol: TCP
+      port: 80 # Porta que o serviço expõe DENTRO do cluster
+      targetPort: 80 # Porta para onde o tráfego será enviado (a porta do container NGINX)
+      # Porta que você usará para acessar de FORA do cluster
+      # O acesso será http://<IP-DO-NODE>:30080

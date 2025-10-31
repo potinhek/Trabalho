@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: trabalho  # Esta linha é a que estava faltando!
+  labels:
+    app: trabalho
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: trabalho
+  template:
+    metadata:
+      labels:
+        app: trabalho
+    spec:
+      containers:
+        - name: trabalho
+          image: trabalho:latest       # Imagem local
+          imagePullPolicy: IfNotPresent  # Não baixar da internet
+          ports:
+          - containerPort: 3123
+          env:
+            - name: PORT          # Variável de ambiente PORT
+              value: "3123"        # Definida como 3123

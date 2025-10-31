@@ -1,0 +1,12 @@
+# Define a imagem base do NGINX
+FROM nginx:1.27-alpine
+
+# Remove a configuração padrão do NGINX
+# Faremos isso para usar apenas a nossa
+RUN rm /etc/nginx/conf.d/default.conf
+
+# Copia nosso arquivo de configuração (default.conf) para dentro da imagem
+# Este arquivo dirá ao NGINX como rotear o tráfego
+COPY default.conf /etc/nginx/conf.d/default.conf
+
+
