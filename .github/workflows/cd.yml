@@ -23,7 +23,8 @@ jobs:
         id: vars
         run: |
           echo "IMAGE=jacksonugv/trabalho" >> $GITHUB_OUTPUT
-          echo "TAG_SHA=${{ github.event.workflow_run.head_sha::7 }}" >> $GITHUB_OUTPUT # Pega o SHA do CI
+          RUN_SHA="${{ github.event.workflow_run.head_sha }}"
+          echo "TAG_SHA=${RUN_SHA::7}" >> $GITHUB_OUTPUT
           echo "NAMESPACE=${{ secrets.K8S_NAMESPACE || 'default'}}" >> $GITHUB_OUTPUT
 
       - name: Setup kubectl
