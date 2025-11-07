@@ -17,7 +17,6 @@ spec:
       containers:
         - name: trabalho
           image: trabalho:latest       # Imagem local
-          imagePullPolicy: IfNotPresent  # Não baixar da internet
           ports:
           - containerPort: 3123
           env:

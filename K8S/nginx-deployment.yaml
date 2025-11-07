@@ -16,6 +16,5 @@ spec:
         - name: nginx-proxy-container
           # ESTA É A LINHA CORRIGIDA
           image: nginx-proxy:latest
-          imagePullPolicy: Never
           ports:
             - containerPort: 80
