@@ -71,7 +71,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ./dockerfile # (Verifique se seu Dockerfile está na raiz e tem esse nome)
+          file: ./Dockerfile # (Verifique se seu Dockerfile está na raiz e tem esse nome)
           push: true
           tags: |
             ${{ steps.vars.outputs.IMAGE }}:latest
