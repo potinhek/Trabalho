@@ -61,7 +61,7 @@ jobs:
       # ATUALIZA a imagem para a nova tag
       - name: Set image to new tag
         run: |
-          kubectl set image deployment/monitor monitor=${{ steps.vars.outputs.IMAGE }}:${{ steps.vars.outputs.TAG_SHA }} -n ${{ steps.vars.outputs.NAMESPACE }}
+          kubectl set image deployment/trabalho trabalho=${{ steps.vars.outputs.IMAGE }}:${{ steps.vars.outputs.TAG_SHA }} -n ${{ steps.vars.outputs.NAMESPACE }}
 
       # Espera o deploy terminar
       - name: Wait rollout
