@@ -71,4 +71,4 @@ jobs:
       - [cite_start]name: Show services (debug) [cite: 191]
         run: |
           kubectl get svc -n ${{ steps.vars.outputs.NAMESPACE }} [cite: 193]
-          kubectl get pods -o wide -n ${{ steps.vars.outputs.NAMESPACE }} [cite: 194]
+          kubectl get pods -o wide -n ${{ steps.vars.outputs.NAMESPACE }} [cite: 194] 
