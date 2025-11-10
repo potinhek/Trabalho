@@ -33,25 +33,26 @@ jobs:
         with:
           version: 'latest'
 
-      # 🔧 Salva kubeconfig em UTF-8 (sem BOM) — evita "control characters"
-      - name: Configure kubeconfig (UTF-8)
+      # 🔧 MODIFIED STEP: Writes raw bytes from base64 to disk.
+      # This avoids all text encoding issues (like BOM)
+      - name: Configure kubeconfig (from Base64 Bytes)
         shell: powershell
         run: |
           $kubeDir = Join-Path $env:USERPROFILE ".kube"
           New-Item -ItemType Directory -Path $kubeDir -Force | Out-Null
+          $path = Join-Path $kubeDir "config"
           $bytes = [Convert]::FromBase64String("${{ secrets.KUBE_CONFIG_DATA }}")
-          $text  = [Text.Encoding]::UTF8.GetString($bytes)
-          $path  = Join-Path $kubeDir "config"
-          $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-          [IO.File]::WriteAllText($path, $text, $utf8NoBom)
+          [IO.File]::WriteAllBytes($path, $bytes)
 
+      # 🔧 MODIFIED STEP: Use "kubectl version --client"
+      # This tests the binary without loading the config.
+      # The "current-context" command will then test the config.
       - name: Smoke test kubectl
         shell: powershell
         run: |
-          kubectl version --short
+          kubectl version --client
           kubectl config current-context
 
-      # ❌ Sem -ErrorAction no kubectl (isso é do PowerShell)
       - name: Create namespace if not exists
         shell: powershell
         run: |
@@ -90,4 +91,3 @@ jobs:
         run: |
           kubectl get svc -n ${{ steps.vars.outputs.NAMESPACE }}
           kubectl get pods -o wide -n ${{ steps.vars.outputs.NAMESPACE }}
-
