@@ -1,5 +1,5 @@
 # Arquivo: .github/workflows/cd.yml
-# CORRIGIDO para rodar no 'self-hosted' runner do Windows (PowerShell)
+# CORRIGIDO: Usa 'powershell' (padrão do Windows) em vez de 'pwsh'
 
 name: CD - Deploy to Kubernetes
 on:
@@ -14,17 +14,16 @@ jobs:
   deploy:
     # Só roda se o workflow de CI foi um sucesso
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
-    # Esta é a mudança principal: rodar no seu PC
     runs-on: self-hosted
     
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 👇 CORRIGIDO: Este passo agora usa sintaxe PowerShell (pwsh)
+      # 👇 CORRIGIDO: Trocado 'pwsh' por 'powershell'
       - name: Set vars
         id: vars
-        shell: pwsh # Dizemos explicitamente para usar PowerShell
+        shell: powershell 
         run: |
           echo "IMAGE=jacksonugv/trabalho" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           
@@ -40,26 +39,26 @@ jobs:
         with:
           version: 'latest'
 
-      # 👇 CORRIGIDO: Este passo agora usa sintaxe PowerShell
+      # 👇 CORRIGIDO: Trocado 'pwsh' por 'powershell' e sintaxe do 'mkdir'
       - name: Configure kubeconfig
-        shell: pwsh
+        shell: powershell
         run: |
           New-Item -ItemType Directory -Path (Join-Path $env:USERPROFILE ".kube") -ErrorAction SilentlyContinue
           $KUBE_CONFIG_BYTES = [System.Convert]::FromBase64String("${{ secrets.KUBE_CONFIG_DATA }}")
           [System.Text.Encoding]::UTF8.GetString($KUBE_CONFIG_BYTES) | Out-File -FilePath (Join-Path $env:USERPROFILE ".kube\config")
 
-      # 👇 CORRIGIDO: Este passo agora usa sintaxe PowerShell (if)
+      # 👇 CORRIGIDO: Trocado 'pwsh' por 'powershell' e sintaxe do 'if'
       - name: Create namespace if not exists
-        shell: pwsh
+        shell: powershell
         run: |
           kubectl get ns ${{ steps.vars.outputs.NAMESPACE }} -ErrorAction SilentlyContinue
           if ($LASTEXITCODE -ne 0) {
             kubectl create ns ${{ steps.vars.outputs.NAMESPACE }}
           }
 
-      # 👇 CORRIGIDO: Este passo agora usa sintaxe PowerShell (ignora erros)
+      # 👇 CORRIGIDO: Trocado 'pwsh' por 'powershell' e adicionado -ErrorAction
       - name: Apply base manifests (Service, Prometheus, Grafana, Nginx)
-        shell: pwsh
+        shell: powershell
         run: |
           kubectl apply -n ${{ steps.vars.outputs.NAMESPACE }} -f k8s/service.yaml -ErrorAction SilentlyContinue
           kubectl apply -n ${{ steps.vars.outputs.NAMESPACE }} -f k8s/prometheus-deployment.yaml -ErrorAction SilentlyContinue
@@ -68,23 +67,27 @@ jobs:
           kubectl apply -n ${{ steps.vars.outputs.NAMESPACE }} -f k8s/nginx-service.yaml -ErrorAction SilentlyContinue
           kubectl apply -n ${{ steps.vars.outputs.NAMESPACE }} -f k8s/prometheus-config.yaml -ErrorAction SilentlyContinue
 
-      # Este passo está OK
+      # 👇 Adicionado 'shell: powershell' para garantir
       - name: Apply app deployment (first time)
+        shell: powershell
         run: |
           kubectl apply -n ${{ steps.vars.outputs.NAMESPACE }} -f k8s/deployment.yaml
 
-      # Este passo está OK (já estava 'trabalho')
+      # 👇 Adicionado 'shell: powershell' e nome do deployment corrigido
       - name: Set image to new tag
+        shell: powershell
         run: |
           kubectl set image deployment/trabalho trabalho=${{ steps.vars.outputs.IMAGE }}:${{ steps.vars.outputs.TAG_SHA }} -n ${{ steps.vars.outputs.NAMESPACE }}
 
-      # 👇 CORRIGIDO: O nome do deployment estava errado (era 'monitor')
+      # 👇 Adicionado 'shell: powershell' e nome do deployment corrigido
       - name: Wait rollout
+        shell: powershell
         run: |
           kubectl rollout status deployment/trabalho -n ${{ steps.vars.outputs.NAMESPACE }} --timeout=120s
           
-      # Este passo está OK
+      # 👇 Adicionado 'shell: powershell' para garantir
       - name: Show services (debug)
+        shell: powershell
         run: |
           kubectl get svc -n ${{ steps.vars.outputs.NAMESPACE }}
           kubectl get pods -o wide -n ${{ steps.vars.outputs.NAMESPACE }}
