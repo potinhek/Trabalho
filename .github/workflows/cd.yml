@@ -1,4 +1,5 @@
 # Arquivo: .github/workflows/cd.yml
+# CORRIGIDO para rodar no 'self-hosted' runner do Windows (PowerShell)
 
 name: CD - Deploy to Kubernetes
 on:
@@ -13,61 +14,76 @@ jobs:
   deploy:
     # Só roda se o workflow de CI foi um sucesso
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    # Esta é a mudança principal: rodar no seu PC
     runs-on: self-hosted
     
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # 👇 CORRIGIDO: Este passo agora usa sintaxe PowerShell (pwsh)
       - name: Set vars
         id: vars
+        shell: pwsh # Dizemos explicitamente para usar PowerShell
         run: |
-          echo "IMAGE=jacksonugv/trabalho" >> $GITHUB_OUTPUT
-          RUN_SHA="${{ github.event.workflow_run.head_sha }}"
-          echo "TAG_SHA=${RUN_SHA::7}" >> $GITHUB_OUTPUT
-          echo "NAMESPACE=${{ secrets.K8S_NAMESPACE || 'default'}}" >> $GITHUB_OUTPUT
+          echo "IMAGE=jacksonugv/trabalho" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          
+          $RUN_SHA = "${{ github.event.workflow_run.head_sha }}"
+          $TAG_SHA = $RUN_SHA.Substring(0, 7)
+          echo "TAG_SHA=$TAG_SHA" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          
+          $NAMESPACE = "${{ secrets.K8S_NAMESPACE || 'default'}}"
+          echo "NAMESPACE=$NAMESPACE" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       - name: Setup kubectl
         uses: azure/setup-kubectl@v4
         with:
           version: 'latest'
 
+      # 👇 CORRIGIDO: Este passo agora usa sintaxe PowerShell
       - name: Configure kubeconfig
+        shell: pwsh
         run: |
-          mkdir -p $HOME/.kube
-          # Decodifica o KUBE_CONFIG_DATA do Secret
-          echo "${{ secrets.KUBE_CONFIG_DATA }}" | base64 -d > $HOME/.kube/config
+          New-Item -ItemType Directory -Path (Join-Path $env:USERPROFILE ".kube") -ErrorAction SilentlyContinue
+          $KUBE_CONFIG_BYTES = [System.Convert]::FromBase64String("${{ secrets.KUBE_CONFIG_DATA }}")
+          [System.Text.Encoding]::UTF8.GetString($KUBE_CONFIG_BYTES) | Out-File -FilePath (Join-Path $env:USERPROFILE ".kube\config")
 
+      # 👇 CORRIGIDO: Este passo agora usa sintaxe PowerShell (if)
       - name: Create namespace if not exists
+        shell: pwsh
         run: |
-          kubectl get ns ${{ steps.vars.outputs.NAMESPACE }} || \
-          kubectl create ns ${{ steps.vars.outputs.NAMESPACE }}
+          kubectl get ns ${{ steps.vars.outputs.NAMESPACE }} -ErrorAction SilentlyContinue
+          if ($LASTEXITCODE -ne 0) {
+            kubectl create ns ${{ steps.vars.outputs.NAMESPACE }}
+          }
 
-      # Aplica os manifestos base (como no seu PDF)
+      # 👇 CORRIGIDO: Este passo agora usa sintaxe PowerShell (ignora erros)
       - name: Apply base manifests (Service, Prometheus, Grafana, Nginx)
+        shell: pwsh
         run: |
-          kubectl apply -n ${{ steps.vars.outputs.NAMESPACE }} -f k8s/service.yaml || true
-          kubectl apply -n ${{ steps.vars.outputs.NAMESPACE }} -f k8s/prometheus-deployment.yaml || true
-          kubectl apply -n ${{ steps.vars.outputs.NAMESPACE }} -f k8s/grafana-deployment.yaml || true
-          kubectl apply -n ${{ steps.vars.outputs.NAMESPACE }} -f k8s/nginx-deployment.yaml || true
-          kubectl apply -n ${{ steps.vars.outputs.NAMESPACE }} -f k8s/nginx-service.yaml || true
-          kubectl apply -n ${{ steps.vars.outputs.NAMESPACE }} -f k8s/prometheus-config.yaml || true
+          kubectl apply -n ${{ steps.vars.outputs.NAMESPACE }} -f k8s/service.yaml -ErrorAction SilentlyContinue
+          kubectl apply -n ${{ steps.vars.outputs.NAMESPACE }} -f k8s/prometheus-deployment.yaml -ErrorAction SilentlyContinue
+          kubectl apply -n ${{ steps.vars.outputs.NAMESPACE }} -f k8s/grafana-deployment.yaml -ErrorAction SilentlyContinue
+          kubectl apply -n ${{ steps.vars.outputs.NAMESPACE }} -f k8s/nginx-deployment.yaml -ErrorAction SilentlyContinue
+          kubectl apply -n ${{ steps.vars.outputs.NAMESPACE }} -f k8s/nginx-service.yaml -ErrorAction SilentlyContinue
+          kubectl apply -n ${{ steps.vars.outputs.NAMESPACE }} -f k8s/prometheus-config.yaml -ErrorAction SilentlyContinue
 
-      # Aplica o deployment do app (garante que exista)
+      # Este passo está OK
       - name: Apply app deployment (first time)
         run: |
           kubectl apply -n ${{ steps.vars.outputs.NAMESPACE }} -f k8s/deployment.yaml
 
-      # ATUALIZA a imagem para a nova tag
+      # Este passo está OK (já estava 'trabalho')
       - name: Set image to new tag
         run: |
           kubectl set image deployment/trabalho trabalho=${{ steps.vars.outputs.IMAGE }}:${{ steps.vars.outputs.TAG_SHA }} -n ${{ steps.vars.outputs.NAMESPACE }}
 
-      # Espera o deploy terminar
+      # 👇 CORRIGIDO: O nome do deployment estava errado (era 'monitor')
       - name: Wait rollout
         run: |
-          kubectl rollout status deployment/monitor -n ${{ steps.vars.outputs.NAMESPACE }} --timeout=120s
+          kubectl rollout status deployment/trabalho -n ${{ steps.vars.outputs.NAMESPACE }} --timeout=120s
           
+      # Este passo está OK
       - name: Show services (debug)
         run: |
           kubectl get svc -n ${{ steps.vars.outputs.NAMESPACE }}
