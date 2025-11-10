@@ -1,93 +1,93 @@
-# Arquivo: .github/workflows/cd.yml
-# CORRIGIDO: Usa 'powershell' (padrão do Windows) em vez de 'pwsh'
-
+# .github/workflows/cd.yml
 name: CD - Deploy to Kubernetes
 on:
   workflow_run:
-    workflows: ["CI Build & Push Docker"] # Nome do workflow de CI
-    types: [ "completed" ] # Roda quando o CI completar
+    workflows: ["CI Build & Push Docker"]
+    types: ["completed"]
 
 permissions:
   contents: read
 
 jobs:
   deploy:
-    # Só roda se o workflow de CI foi um sucesso
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: self-hosted
-    
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 👇 CORRIGIDO: Trocado 'pwsh' por 'powershell'
       - name: Set vars
         id: vars
-        shell: powershell 
+        shell: powershell
         run: |
-          echo "IMAGE=jacksonugv/trabalho" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          
-          $RUN_SHA = "${{ github.event.workflow_run.head_sha }}"
-          $TAG_SHA = $RUN_SHA.Substring(0, 7)
-          echo "TAG_SHA=$TAG_SHA" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          
-          $NAMESPACE = "${{ secrets.K8S_NAMESPACE || 'default'}}"
-          echo "NAMESPACE=$NAMESPACE" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "IMAGE=jacksonugv/trabalho" | Out-File $env:GITHUB_OUTPUT -Append
+          $TAG_SHA = "${{ github.event.workflow_run.head_sha }}".Substring(0,7)
+          "TAG_SHA=$TAG_SHA" | Out-File $env:GITHUB_OUTPUT -Append
+          $ns = "${{ secrets.K8S_NAMESPACE }}"
+          if ([string]::IsNullOrWhiteSpace($ns)) { $ns = 'default' }
+          "NAMESPACE=$ns" | Out-File $env:GITHUB_OUTPUT -Append
 
       - name: Setup kubectl
         uses: azure/setup-kubectl@v4
         with:
           version: 'latest'
 
-      # 👇 CORRIGIDO: Trocado 'pwsh' por 'powershell' e sintaxe do 'mkdir'
-      - name: Configure kubeconfig
+      # 🔧 Salva kubeconfig em UTF-8 (sem BOM) — evita "control characters"
+      - name: Configure kubeconfig (UTF-8)
         shell: powershell
         run: |
-          New-Item -ItemType Directory -Path (Join-Path $env:USERPROFILE ".kube") -ErrorAction SilentlyContinue
-          $KUBE_CONFIG_BYTES = [System.Convert]::FromBase64String("${{ secrets.KUBE_CONFIG_DATA }}")
-          [System.Text.Encoding]::UTF8.GetString($KUBE_CONFIG_BYTES) | Out-File -FilePath (Join-Path $env:USERPROFILE ".kube\config")
+          $kubeDir = Join-Path $env:USERPROFILE ".kube"
+          New-Item -ItemType Directory -Path $kubeDir -Force | Out-Null
+          $bytes = [Convert]::FromBase64String("${{ secrets.KUBE_CONFIG_DATA }}")
+          $text  = [Text.Encoding]::UTF8.GetString($bytes)
+          $path  = Join-Path $kubeDir "config"
+          $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+          [IO.File]::WriteAllText($path, $text, $utf8NoBom)
 
-      # 👇 CORRIGIDO: Trocado 'pwsh' por 'powershell' e sintaxe do 'if'
+      - name: Smoke test kubectl
+        shell: powershell
+        run: |
+          kubectl version --short
+          kubectl config current-context
+
+      # ❌ Sem -ErrorAction no kubectl (isso é do PowerShell)
       - name: Create namespace if not exists
         shell: powershell
         run: |
-          kubectl get ns ${{ steps.vars.outputs.NAMESPACE }} -ErrorAction SilentlyContinue
-          if ($LASTEXITCODE -ne 0) {
-            kubectl create ns ${{ steps.vars.outputs.NAMESPACE }}
-          }
+          $ns='${{ steps.vars.outputs.NAMESPACE }}'
+          kubectl get ns $ns 2>$null
+          if ($LASTEXITCODE -ne 0) { kubectl create ns $ns }
 
-      # 👇 CORRIGIDO: Trocado 'pwsh' por 'powershell' e adicionado -ErrorAction
       - name: Apply base manifests (Service, Prometheus, Grafana, Nginx)
         shell: powershell
         run: |
-          kubectl apply -n ${{ steps.vars.outputs.NAMESPACE }} -f k8s/service.yaml -ErrorAction SilentlyContinue
-          kubectl apply -n ${{ steps.vars.outputs.NAMESPACE }} -f k8s/prometheus-deployment.yaml -ErrorAction SilentlyContinue
-          kubectl apply -n ${{ steps.vars.outputs.NAMESPACE }} -f k8s/grafana-deployment.yaml -ErrorAction SilentlyContinue
-          kubectl apply -n ${{ steps.vars.outputs.NAMESPACE }} -f k8s/nginx-deployment.yaml -ErrorAction SilentlyContinue
-          kubectl apply -n ${{ steps.vars.outputs.NAMESPACE }} -f k8s/nginx-service.yaml -ErrorAction SilentlyContinue
-          kubectl apply -n ${{ steps.vars.outputs.NAMESPACE }} -f k8s/prometheus-config.yaml -ErrorAction SilentlyContinue
+          $ns='${{ steps.vars.outputs.NAMESPACE }}'
+          kubectl apply -n $ns -f k8s/service.yaml
+          kubectl apply -n $ns -f k8s/prometheus-config.yaml
+          kubectl apply -n $ns -f k8s/prometheus-deployment.yaml
+          kubectl apply -n $ns -f k8s/grafana-deployment.yaml
+          kubectl apply -n $ns -f k8s/nginx-deployment.yaml
+          kubectl apply -n $ns -f k8s/nginx-service.yaml
 
-      # 👇 Adicionado 'shell: powershell' para garantir
       - name: Apply app deployment (first time)
         shell: powershell
         run: |
           kubectl apply -n ${{ steps.vars.outputs.NAMESPACE }} -f k8s/deployment.yaml
 
-      # 👇 Adicionado 'shell: powershell' e nome do deployment corrigido
       - name: Set image to new tag
         shell: powershell
         run: |
           kubectl set image deployment/trabalho trabalho=${{ steps.vars.outputs.IMAGE }}:${{ steps.vars.outputs.TAG_SHA }} -n ${{ steps.vars.outputs.NAMESPACE }}
 
-      # 👇 Adicionado 'shell: powershell' e nome do deployment corrigido
       - name: Wait rollout
         shell: powershell
         run: |
           kubectl rollout status deployment/trabalho -n ${{ steps.vars.outputs.NAMESPACE }} --timeout=120s
-          
-      # 👇 Adicionado 'shell: powershell' para garantir
+
       - name: Show services (debug)
         shell: powershell
         run: |
           kubectl get svc -n ${{ steps.vars.outputs.NAMESPACE }}
           kubectl get pods -o wide -n ${{ steps.vars.outputs.NAMESPACE }}
+
