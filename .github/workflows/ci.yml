@@ -49,7 +49,6 @@ jobs:
       - name: Set image tags
         id: vars
         run: |
-          # 👇 AQUI ESTÁ A CORREÇÃO 👇
           echo "IMAGE=jacksonugv/trabalho" >> $GITHUB_OUTPUT
           echo "TAG_SHA=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
 

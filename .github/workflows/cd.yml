@@ -22,7 +22,7 @@ jobs:
         id: vars
         shell: bash
         run: |
-          echo "IMAGE=seuusuario/monitor" >> "$GITHUB_OUTPUT"
+          echo "IMAGE=jacksonugv/monitor" >> "$GITHUB_OUTPUT"
           echo "TAG_SHA=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
           NS="${{ secrets.K8S_NAMESPACE }}"
           [ -z "$NS" ] && NS="default"
