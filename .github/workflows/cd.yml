@@ -1,8 +1,8 @@
-# .github/workflows/cd.yml
 name: CD - Deploy to Kubernetes
+
 on:
   workflow_run:
-    workflows: ["CI Build & Push Docker"]
+    workflows: ["CI - Build & Push Docker"]
     types: ["completed"]
 
 permissions:
@@ -11,85 +11,236 @@ permissions:
 jobs:
   deploy:
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
-    runs-on: self-hosted
+    # Pode rodar em ubuntu-latest OU em um runner Windows self-hosted.
+    # Este job contém passos condicionais por SO.
+    runs-on: ubuntu-latest
+    environment: production
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set vars
-        id: vars
-        shell: powershell
+      # ------------------------------
+      # Set vars (Linux)
+      # ------------------------------
+      - name: Set vars (Linux)
+        id: vars_linux
+        if: runner.os == 'Linux'
+        shell: bash
         run: |
-          "IMAGE=jacksonugv/trabalho" | Out-File $env:GITHUB_OUTPUT -Append
-          $TAG_SHA = "${{ github.event.workflow_run.head_sha }}".Substring(0,7)
-          "TAG_SHA=$TAG_SHA" | Out-File $env:GITHUB_OUTPUT -Append
+          echo "IMAGE=seuusuario/monitor" >> "$GITHUB_OUTPUT"
+          echo "TAG_SHA=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          NAMESPACE="${{ secrets.K8S_NAMESPACE }}"
+          echo "NAMESPACE=${NAMESPACE:-default}" >> "$GITHUB_OUTPUT"
+
+      # ------------------------------
+      # Set vars (Windows)
+      # ------------------------------
+      - name: Set vars (Windows)
+        id: vars_win
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          "IMAGE=seuusuario/monitor" >> $env:GITHUB_OUTPUT
+          "TAG_SHA=$($env:GITHUB_SHA.Substring(0,7))" >> $env:GITHUB_OUTPUT
           $ns = "${{ secrets.K8S_NAMESPACE }}"
-          if ([string]::IsNullOrWhiteSpace($ns)) { $ns = 'default' }
-          "NAMESPACE=$ns" | Out-File $env:GITHUB_OUTPUT -Append
+          if ([string]::IsNullOrWhiteSpace($ns)) { $ns = "default" }
+          "NAMESPACE=$ns" >> $env:GITHUB_OUTPUT
+
+      # Helper para ler NAMESPACE em passos seguintes (usa outputs do SO correto)
+      - name: Export NAMESPACE output
+        id: vars
+        shell: bash
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            echo "NAMESPACE=${{ steps.vars_win.outputs.NAMESPACE }}" >> "$GITHUB_OUTPUT"
+            echo "IMAGE=${{ steps.vars_win.outputs.IMAGE }}" >> "$GITHUB_OUTPUT"
+            echo "TAG_SHA=${{ steps.vars_win.outputs.TAG_SHA }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "NAMESPACE=${{ steps.vars_linux.outputs.NAMESPACE }}" >> "$GITHUB_OUTPUT"
+            echo "IMAGE=${{ steps.vars_linux.outputs.IMAGE }}" >> "$GITHUB_OUTPUT"
+            echo "TAG_SHA=${{ steps.vars_linux.outputs.TAG_SHA }}" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Setup kubectl
         uses: azure/setup-kubectl@v4
         with:
-          version: 'latest'
+          version: latest
 
-      # 🔧 MODIFIED STEP: Writes raw bytes from base64 to disk.
-      # This avoids all text encoding issues (like BOM)
-      - name: Configure kubeconfig (from Base64 Bytes)
-        shell: powershell
+      # ------------------------------
+      # Configure kubeconfig (Linux)
+      # ------------------------------
+      - name: Configure kubeconfig (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}
+          KUBE_CONTEXT: ${{ secrets.KUBE_CONTEXT }}
         run: |
-          $kubeDir = Join-Path $env:USERPROFILE ".kube"
-          New-Item -ItemType Directory -Path $kubeDir -Force | Out-Null
-          $path = Join-Path $kubeDir "config"
-          $bytes = [Convert]::FromBase64String("${{ secrets.KUBE_CONFIG_DATA }}")
-          [IO.File]::WriteAllBytes($path, $bytes)
+          mkdir -p "$HOME/.kube"
+          echo "$KUBE_CONFIG_DATA" | base64 -d > "$HOME/.kube/config"
+          chmod 600 "$HOME/.kube/config"
+          if [ -n "${KUBE_CONTEXT}" ]; then
+            kubectl config use-context "$KUBE_CONTEXT"
+          fi
+          echo -n "API Server: "
+          kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}'; echo
+          kubectl version --short
+          kubectl cluster-info
 
-      # 🔧 MODIFIED STEP: Use "kubectl version --client"
-      # This tests the binary without loading the config.
-      # The "current-context" command will then test the config.
-      - name: Smoke test kubectl
-        shell: powershell
+      # ------------------------------
+      # Configure kubeconfig (Windows)
+      # ------------------------------
+      - name: Configure kubeconfig (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}
+          KUBE_CONTEXT: ${{ secrets.KUBE_CONTEXT }}
         run: |
-          kubectl version --client
-          kubectl config current-context
+          $homeKube = "$env:USERPROFILE\.kube"
+          New-Item -ItemType Directory -Force -Path $homeKube | Out-Null
+          [System.IO.File]::WriteAllBytes("$homeKube\config", [System.Convert]::FromBase64String($env:KUBE_CONFIG_DATA))
+          $env:KUBECONFIG = "$homeKube\config"
+          if ($env:KUBE_CONTEXT) { kubectl config use-context $env:KUBE_CONTEXT }
+          $api = kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}'
+          Write-Host "API Server: $api"
+          kubectl version --short
+          kubectl cluster-info
 
-      - name: Create namespace if not exists
-        shell: powershell
+      # ------------------------------
+      # Create namespace (Linux)
+      # ------------------------------
+      - name: Create namespace if not exists (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
         run: |
-          $ns='${{ steps.vars.outputs.NAMESPACE }}'
-          kubectl get ns $ns 2>$null
-          if ($LASTEXITCODE -ne 0) { kubectl create ns $ns }
+          kubectl get ns "${{ steps.vars.outputs.NAMESPACE }}" >/dev/null 2>&1 || \
+          kubectl create ns "${{ steps.vars.outputs.NAMESPACE }}"
 
-      - name: Apply base manifests (Service, Prometheus, Grafana, Nginx)
-        shell: powershell
+      # ------------------------------
+      # Create namespace (Windows)
+      # ------------------------------
+      - name: Create namespace if not exists (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          NS: ${{ steps.vars.outputs.NAMESPACE }}
         run: |
-          $ns='${{ steps.vars.outputs.NAMESPACE }}'
-          kubectl apply -n $ns -f k8s/service.yaml
-          kubectl apply -n $ns -f k8s/prometheus-config.yaml
-          kubectl apply -n $ns -f k8s/prometheus-deployment.yaml
-          kubectl apply -n $ns -f k8s/grafana-deployment.yaml
-          kubectl apply -n $ns -f k8s/nginx-deployment.yaml
-          kubectl apply -n $ns -f k8s/nginx-service.yaml
+          $env:KUBECONFIG = "$env:USERPROFILE\.kube\config"
+          Write-Host "Using API:" (kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}')
+          kubectl get ns $env:NS *> $null
+          if ($LASTEXITCODE -ne 0) { kubectl create ns $env:NS }
 
-      - name: Apply app deployment (first time)
-        shell: powershell
+      # ------------------------------
+      # Apply base manifests (Linux)
+      # ------------------------------
+      - name: Apply base manifests (Service, Prometheus, Grafana, Nginx) [Linux]
+        if: runner.os == 'Linux'
+        shell: bash
         run: |
-          kubectl apply -n ${{ steps.vars.outputs.NAMESPACE }} -f k8s/deployment.yaml
+          kubectl apply -n "${{ steps.vars.outputs.NAMESPACE }}" -f k8s/service.yaml || true
+          kubectl apply -n "${{ steps.vars.outputs.NAMESPACE }}" -f k8s/prometheus-deployment.yaml || true
+          kubectl apply -n "${{ steps.vars.outputs.NAMESPACE }}" -f k8s/grafana-deployment.yaml || true
+          kubectl apply -n "${{ steps.vars.outputs.NAMESPACE }}" -f k8s/nginx-deployment.yaml || true
+          kubectl apply -n "${{ steps.vars.outputs.NAMESPACE }}" -f k8s/nginx-service.yaml || true
+          kubectl apply -n "${{ steps.vars.outputs.NAMESPACE }}" -f k8s/prometheus-config.yaml || true
 
-      - name: Set image to new tag
-        shell: powershell
+      # ------------------------------
+      # Apply base manifests (Windows)
+      # ------------------------------
+      - name: Apply base manifests (Service, Prometheus, Grafana, Nginx) [Windows]
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          NS: ${{ steps.vars.outputs.NAMESPACE }}
         run: |
-          kubectl set image deployment/trabalho trabalho=${{ steps.vars.outputs.IMAGE }}:${{ steps.vars.outputs.TAG_SHA }} -n ${{ steps.vars.outputs.NAMESPACE }}
+          kubectl apply -n $env:NS -f k8s/service.yaml                || $true
+          kubectl apply -n $env:NS -f k8s/prometheus-deployment.yaml  || $true
+          kubectl apply -n $env:NS -f k8s/grafana-deployment.yaml     || $true
+          kubectl apply -n $env:NS -f k8s/nginx-deployment.yaml       || $true
+          kubectl apply -n $env:NS -f k8s/nginx-service.yaml          || $true
+          kubectl apply -n $env:NS -f k8s/prometheus-config.yaml      || $true
 
-      - name: Wait rollout
-        shell: powershell
+      # ------------------------------
+      # Apply app deployment (Linux)
+      # ------------------------------
+      - name: Apply app deployment (first time) [Linux]
+        if: runner.os == 'Linux'
+        shell: bash
         run: |
-          kubectl rollout status deployment/trabalho -n ${{ steps.vars.outputs.NAMESPACE }} --timeout=120s
+          kubectl apply -n "${{ steps.vars.outputs.NAMESPACE }}" -f k8s/deployment.yaml
 
+      # ------------------------------
+      # Apply app deployment (Windows)
+      # ------------------------------
+      - name: Apply app deployment (first time) [Windows]
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          NS: ${{ steps.vars.outputs.NAMESPACE }}
+        run: |
+          kubectl apply -n $env:NS -f k8s/deployment.yaml
+
+      # ------------------------------
+      # Set image to new tag (Linux)
+      # ------------------------------
+      - name: Set image to new tag [Linux]
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          kubectl set image deployment/monitor monitor="${{ steps.vars.outputs.IMAGE }}:${{ steps.vars.outputs.TAG_SHA }}" \
+            -n "${{ steps.vars.outputs.NAMESPACE }}"
+
+      # ------------------------------
+      # Set image to new tag (Windows)
+      # ------------------------------
+      - name: Set image to new tag [Windows]
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          NS: ${{ steps.vars.outputs.NAMESPACE }}
+          IMG: ${{ steps.vars.outputs.IMAGE }}
+          TAG: ${{ steps.vars.outputs.TAG_SHA }}
+        run: |
+          kubectl set image deployment/monitor monitor="$env:IMG:$env:TAG" -n $env:NS
+
+      # ------------------------------
+      # Wait rollout (Linux)
+      # ------------------------------
+      - name: Wait rollout [Linux]
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          kubectl rollout status deployment/monitor \
+            -n "${{ steps.vars.outputs.NAMESPACE }}" --timeout=120s
+
+      # ------------------------------
+      # Wait rollout (Windows)
+      # ------------------------------
+      - name: Wait rollout [Windows]
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          NS: ${{ steps.vars.outputs.NAMESPACE }}
+        run: |
+          kubectl rollout status deployment/monitor -n $env:NS --timeout=120s
+
+      # ------------------------------
+      # Debug services/pods (ambos)
+      # ------------------------------
       - name: Show services (debug)
-        shell: powershell
+        if: runner.os == 'Linux'
+        shell: bash
         run: |
-          kubectl get svc -n ${{ steps.vars.outputs.NAMESPACE }}
-          kubectl get pods -o wide -n ${{ steps.vars.outputs.NAMESPACE }}
+          kubectl get svc -n "${{ steps.vars.outputs.NAMESPACE }}"
+          kubectl get pods -o wide -n "${{ steps.vars.outputs.NAMESPACE }}"
 
-          
+      - name: Show services (debug) [Windows]
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          NS: ${{ steps.vars.outputs.NAMESPACE }}
+        run: |
+          kubectl get svc -n $env:NS
+          kubectl get pods -o wide -n $env:NS
