@@ -1,0 +1,12 @@
+﻿{
+  "repositoryName": "potinhek/Trabalho",
+  "pipelineDirectory": "Trabalho",
+  "workspaceDirectory": "Trabalho\\Trabalho",
+  "repositories": {
+    "potinhek/Trabalho": {
+      "repositoryPath": "Trabalho\\Trabalho",
+      "lastRunOn": "11/12/2025 15:51:30 -03:00"
+    }
+  },
+  "lastRunOn": "11/12/2025 15:51:30 -03:00"
+}
