@@ -49,23 +49,42 @@ jobs:
           }
           kubectl version --client=true
 
-      # --- Minikube ligado e com contexto ativo ---
+      # --- Garante Docker Desktop / escolhe driver ---
+      - name: Ensure Docker/driver
+        shell: powershell
+        run: |
+          $global:DRIVER = "docker"
+          if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+            $global:DRIVER = "hyperv"
+          } else {
+            # Tenta garantir Docker Desktop iniciado
+            try {
+              docker info 1>$null 2>$null
+            } catch {
+              $dockerExe = "C:\Program Files\Docker\Docker\Docker Desktop.exe"
+              if (Test-Path $dockerExe) {
+                Start-Process -FilePath $dockerExe
+                Write-Host "Iniciando Docker Desktop e aguardando..."
+                for ($i=1; $i -le 40; $i++) {
+                  try { docker info 1>$null 2>$null; break } catch { Start-Sleep -Seconds 3 }
+                  if ($i -eq 40) { throw "Docker não ficou pronto." }
+                }
+              }
+            }
+          }
+          "DRIVER=$global:DRIVER" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Write-Host "Driver selecionado: $global:DRIVER"
+
+      # --- Minikube ligado e contexto atualizado ---
       - name: Ensure Minikube running
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-
+          $driver = "${{ env.DRIVER }}"
           if (-not (Get-Command minikube -ErrorAction SilentlyContinue)) {
-            throw "Minikube não está instalado no runner. Instale no mesmo host."
+            throw "Minikube não está instalado no runner."
           }
 
-          # Detecta driver preferível
-          $driver = "docker"
-          if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-            $driver = "hyperv"
-          }
-
-          # Sobe se necessário
           $ok = $false
           try {
             $st = minikube status --output=json | ConvertFrom-Json
@@ -77,9 +96,20 @@ jobs:
             minikube start --driver=$driver
           }
 
-          # Garante kubeconfig do minikube e contexto
+          # Atualiza kubeconfig/contexto do usuário
           minikube update-context
           $env:KUBECONFIG = "$env:USERPROFILE\.kube\config"
+
+          # Se o server for 127.0.0.1:PORT, troca para <minikube ip>:8443
+          $server = kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}'
+          $clusterName = kubectl config view --minify -o jsonpath='{.clusters[0].name}'
+          if ($server -match '^https://127\.0\.0\.1:\d+$') {
+            $mkip = minikube ip
+            if (-not $mkip) { throw "minikube ip não retornou IP." }
+            $new = "https://$mkip:8443"
+            Write-Host "Reescrevendo server do cluster '$clusterName' para $new"
+            kubectl config set-cluster $clusterName --server=$new | Out-Null
+          }
 
           $ctx = kubectl config current-context
           Write-Host "Contexto atual: $ctx"
@@ -91,17 +121,14 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $max = 20
-          for ($i=1; $i -le $max; $i++) {
+          for ($i=1; $i -le 30; $i++) {
             try {
               $h = kubectl get --raw=/healthz 2>$null
-              if ($LASTEXITCODE -eq 0 -and $h -match "ok") {
-                Write-Host "API Server OK"; break
-              }
+              if ($LASTEXITCODE -eq 0 -and $h -match "ok") { Write-Host "API Server OK"; break }
             } catch { }
-            Write-Host "Aguardando API Server ($i/$max)..."
+            Write-Host "Aguardando API Server ($i/30)..."
             Start-Sleep -Seconds 3
-            if ($i -eq $max) { throw "API Server indisponível (timeout)." }
+            if ($i -eq 30) { throw "API Server indisponível (timeout)." }
           }
           kubectl cluster-info
           kubectl get nodes -o wide
@@ -161,4 +188,3 @@ jobs:
           kubectl get svc -n $env:NS
           kubectl get deploy -n $env:NS
           kubectl get pods -o wide -n $env:NS
-          
