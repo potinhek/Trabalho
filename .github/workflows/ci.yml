@@ -1,4 +1,4 @@
-name: CD - Deploy to Kubernetes (Self-Hosted)
+name: CD - Deploy to Kubernetes
 
 on:
   workflow_run:
@@ -8,142 +8,80 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: cd-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   deploy:
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
-    runs-on: [self-hosted, windows]
+    runs-on: ubuntu-latest
     environment: production
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Vars
+      - name: Set vars
         id: vars
-        shell: powershell
+        shell: bash
         run: |
-          "IMAGE=jacksonugv/trabalho" >> $env:GITHUB_OUTPUT
-          "TAG_SHA=$($env:GITHUB_SHA.Substring(0,7))" >> $env:GITHUB_OUTPUT
-          $ns = "${{ secrets.K8S_NAMESPACE }}"; if ([string]::IsNullOrWhiteSpace($ns)) { $ns = "default" }
-          "NAMESPACE=$ns" >> $env:GITHUB_OUTPUT
+          echo "IMAGE=seuusuario/monitor" >> "$GITHUB_OUTPUT"
+          echo "TAG_SHA=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          NS="${{ secrets.K8S_NAMESPACE }}"
+          [ -z "$NS" ] && NS="default"
+          echo "NAMESPACE=$NS" >> "$GITHUB_OUTPUT"
 
-      - name: Ensure kubectl
-        shell: powershell
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: v1.30.0
+
+      - name: Configure kubeconfig
+        shell: bash
+        env:
+          KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}
+          KUBE_CONTEXT: ${{ secrets.KUBE_CONTEXT }}
         run: |
-          $ErrorActionPreference = 'Stop'
-          if (-not (Get-Command kubectl -ErrorAction SilentlyContinue)) {
-            Invoke-WebRequest -UseBasicParsing -Uri https://dl.k8s.io/release/stable.txt -OutFile stable.txt
-            $ver = Get-Content stable.txt
-            $url = "https://dl.k8s.io/release/$ver/bin/windows/amd64/kubectl.exe"
-            $bin = Join-Path $env:RUNNER_TEMP "bin"
-            New-Item -ItemType Directory -Force -Path $bin | Out-Null
-            Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile (Join-Path $bin "kubectl.exe")
-            "$bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding ascii -Append
-          }
-          kubectl version --client=true
-
-      - name: Ensure Docker/driver
-        shell: powershell
-        run: |
-          $drv = "docker"
-          if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { $drv = "hyperv" }
-          "DRIVER=$drv" | Out-File -FilePath $env:GITHUB_ENV -Append
-          Write-Host "Driver selecionado: $drv"
-
-      - name: Ensure Minikube running + context
-        shell: powershell
-        run: |
-          $ErrorActionPreference = 'Stop'
-          if (-not (Get-Command minikube -ErrorAction SilentlyContinue)) { throw "Minikube não está instalado." }
-
-          $ok=$false
-          try {
-            $st = minikube status --output=json | ConvertFrom-Json
-            if ($st.Host -eq 'Running' -and $st.Kubelet -eq 'Running' -and $st.APIServer -eq 'Running') { $ok=$true }
-          } catch {}
-          if (-not $ok) {
-            minikube start --driver=${{ env.DRIVER }}
-          }
-
-          minikube update-context
-          $env:KUBECONFIG = "$env:USERPROFILE\.kube\config"
-
-          # Se hyperv, força server para <ip>:8443
-          if ("${{ env.DRIVER }}" -eq "hyperv") {
-            $ip = minikube ip
-            $name = kubectl config view --minify -o jsonpath='{.clusters[0].name}'
-            kubectl config set-cluster $name --server="https://$ip:8443" | Out-Null
-          }
-
-          $srv = kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}'
-          Write-Host "API Server: $srv"
-
-      # -------- Wrapper de kubectl (KUBE) --------
-      - name: Define KUBE wrapper
-        shell: powershell
-        run: |
-          $file = Join-Path $env:RUNNER_TEMP "k.ps1"
-          if ("${{ env.DRIVER }}" -eq "docker") {
-            Set-Content -Path $file -Value 'param([Parameter(ValueFromRemainingArguments=$true)][string[]]$Args) minikube kubectl -- @Args'
-          } else {
-            Set-Content -Path $file -Value 'param([Parameter(ValueFromRemainingArguments=$true)][string[]]$Args) kubectl @Args'
-          }
-          "KUBE=$file" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-      - name: API health (retry)
-        shell: powershell
-        run: |
-          $ErrorActionPreference = 'Stop'
-          for ($i=1; $i -le 30; $i++) {
-            try {
-              $h = & $env:KUBE get --raw=/healthz 2>$null
-              if ($LASTEXITCODE -eq 0 -and $h -match "ok") { Write-Host "API Server OK"; break }
-            } catch {}
-            Write-Host "Aguardando API Server ($i/30)..."; Start-Sleep -Seconds 3
-            if ($i -eq 30) { throw "API Server indisponível (timeout)." }
-          }
+          set -euo pipefail
+          mkdir -p "$HOME/.kube"
+          echo "$KUBE_CONFIG_DATA" | base64 -d > "$HOME/.kube/config"
+          chmod 600 "$HOME/.kube/config"
+          if [ -n "${KUBE_CONTEXT:-}" ]; then
+            kubectl config use-context "$KUBE_CONTEXT"
+          fi
+          echo -n "API Server: "
+          kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}'; echo
+          kubectl version --short
+          kubectl cluster-info
 
       - name: Create namespace if not exists
-        shell: powershell
-        env:
-          NS: ${{ steps.vars.outputs.NAMESPACE }}
+        shell: bash
         run: |
-          & $env:KUBE get ns $env:NS *> $null
-          if ($LASTEXITCODE -ne 0) { & $env:KUBE create ns $env:NS }
-          & $env:KUBE get ns $env:NS
+          kubectl get ns "${{ steps.vars.outputs.NAMESPACE }}" >/dev/null 2>&1 || \
+          kubectl create ns "${{ steps.vars.outputs.NAMESPACE }}"
 
-      - name: Apply base manifests (best-effort)
-        shell: powershell
-        env:
-          NS: ${{ steps.vars.outputs.NAMESPACE }}
+      # opcionais / idempotentes
+      - name: Apply base manifests (Service, Prometheus, Grafana, Nginx)
+        shell: bash
         run: |
-          & $env:KUBE apply -n $env:NS -f k8s/service.yaml               || $true
-          & $env:KUBE apply -n $env:NS -f k8s/prometheus-deployment.yaml || $true
-          & $env:KUBE apply -n $env:NS -f k8s/grafana-deployment.yaml    || $true
-          & $env:KUBE apply -n $env:NS -f k8s/nginx-deployment.yaml      || $true
-          & $env:KUBE apply -n $env:NS -f k8s/nginx-service.yaml         || $true
-          & $env:KUBE apply -n $env:NS -f k8s/prometheus-config.yaml     || $true
+          kubectl apply -n "${{ steps.vars.outputs.NAMESPACE }}" -f k8s/service.yaml || true
+          kubectl apply -n "${{ steps.vars.outputs.NAMESPACE }}" -f k8s/prometheus-deployment.yaml || true
+          kubectl apply -n "${{ steps.vars.outputs.NAMESPACE }}" -f k8s/grafana-deployment.yaml || true
+          kubectl apply -n "${{ steps.vars.outputs.NAMESPACE }}" -f k8s/nginx-deployment.yaml || true
+          kubectl apply -n "${{ steps.vars.outputs.NAMESPACE }}" -f k8s/nginx-service.yaml || true
+          kubectl apply -n "${{ steps.vars.outputs.NAMESPACE }}" -f k8s/prometheus-config.yaml || true
 
-      - name: Apply app deployment
-        shell: powershell
-        env:
-          NS:  ${{ steps.vars.outputs.NAMESPACE }}
-          IMG: ${{ steps.vars.outputs.IMAGE }}
-          TAG: ${{ steps.vars.outputs.TAG_SHA }}
+      - name: Apply app deployment (first time)
+        shell: bash
         run: |
-          & $env:KUBE apply -n $env:NS -f k8s/deployment.yaml
-          & $env:KUBE set image deployment/monitor monitor="$env:IMG:$env:TAG" -n $env:NS
-          & $env:KUBE rollout status deployment/monitor -n $env:NS --timeout=180s
+          kubectl apply -n "${{ steps.vars.outputs.NAMESPACE }}" -f k8s/deployment.yaml
 
-      - name: Show services/pods
-        shell: powershell
-        env:
-          NS: ${{ steps.vars.outputs.NAMESPACE }}
+      - name: Set image to new tag
+        shell: bash
         run: |
-          & $env:KUBE get svc -n $env:NS
-          & $env:KUBE get deploy -n $env:NS
-          & $env:KUBE get pods -o wide -n $env:NS
+          kubectl set image deployment/monitor \
+            monitor="${{ steps.vars.outputs.IMAGE }}:${{ steps.vars.outputs.TAG_SHA }}" \
+            -n "${{ steps.vars.outputs.NAMESPACE }}"
+
+      - name: Wait rollout
+        shell: bash
+        run: |
+          kubectl rollout status deployment/monitor \
+            -n "${{ steps.vars.outputs.NAMESPACE }}" -
