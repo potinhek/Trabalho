@@ -22,10 +22,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # =========================
-      # Vars (Windows)
-      # =========================
-      - name: Set vars (Windows)
+      - name: Set vars
         id: vars
         shell: powershell
         run: |
@@ -35,9 +32,7 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($ns)) { $ns = "default" }
           "NAMESPACE=$ns" >> $env:GITHUB_OUTPUT
 
-      # =========================
-      # kubectl (garante disponível)
-      # =========================
+      # --- kubectl disponível ---
       - name: Ensure kubectl
         shell: powershell
         run: |
@@ -54,28 +49,64 @@ jobs:
           }
           kubectl version --client=true
 
-      # =========================
-      # kubeconfig local do host
-      # =========================
-      - name: Configure kubeconfig (self-hosted)
+      # --- Minikube ligado e com contexto ativo ---
+      - name: Ensure Minikube running
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $localCfg = Join-Path $env:USERPROFILE ".kube\config"
-          if (-not (Test-Path $localCfg)) {
-            throw "Kubeconfig não encontrado em $localCfg. Configure kubectl no host do runner (kubectl context ativo)."
+
+          if (-not (Get-Command minikube -ErrorAction SilentlyContinue)) {
+            throw "Minikube não está instalado no runner. Instale no mesmo host."
           }
-          $env:KUBECONFIG = $localCfg
+
+          # Detecta driver preferível
+          $driver = "docker"
+          if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+            $driver = "hyperv"
+          }
+
+          # Sobe se necessário
+          $ok = $false
+          try {
+            $st = minikube status --output=json | ConvertFrom-Json
+            if ($st.Host -eq 'Running' -and $st.Kubelet -eq 'Running' -and $st.APIServer -eq 'Running') { $ok = $true }
+          } catch { }
+
+          if (-not $ok) {
+            Write-Host "Iniciando Minikube (--driver=$driver)..."
+            minikube start --driver=$driver
+          }
+
+          # Garante kubeconfig do minikube e contexto
+          minikube update-context
+          $env:KUBECONFIG = "$env:USERPROFILE\.kube\config"
+
           $ctx = kubectl config current-context
           Write-Host "Contexto atual: $ctx"
-          $api = kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}'
-          Write-Host "API Server: $api"
+          $server = kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}'
+          Write-Host "API Server: $server"
+
+      # --- Health-check do API server com retry ---
+      - name: Wait for API server (healthz)
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $max = 20
+          for ($i=1; $i -le $max; $i++) {
+            try {
+              $h = kubectl get --raw=/healthz 2>$null
+              if ($LASTEXITCODE -eq 0 -and $h -match "ok") {
+                Write-Host "API Server OK"; break
+              }
+            } catch { }
+            Write-Host "Aguardando API Server ($i/$max)..."
+            Start-Sleep -Seconds 3
+            if ($i -eq $max) { throw "API Server indisponível (timeout)." }
+          }
           kubectl cluster-info
           kubectl get nodes -o wide
 
-      # =========================
-      # Namespace
-      # =========================
+      # --- Namespace (idempotente) ---
       - name: Create namespace if not exists
         shell: powershell
         env:
@@ -85,9 +116,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { kubectl create ns $env:NS }
           kubectl get ns $env:NS
 
-      # =========================
-      # Manifests base (se existirem)
-      # =========================
+      # --- Manifests base (best-effort) ---
       - name: Apply base manifests
         shell: powershell
         env:
@@ -100,9 +129,7 @@ jobs:
           kubectl apply -n $env:NS -f k8s/nginx-service.yaml         || $true
           kubectl apply -n $env:NS -f k8s/prometheus-config.yaml     || $true
 
-      # =========================
-      # App deployment
-      # =========================
+      # --- App principal ---
       - name: Apply app deployment
         shell: powershell
         env:
@@ -119,9 +146,6 @@ jobs:
         run: |
           kubectl set image deployment/monitor monitor="$env:IMG:$env:TAG" -n $env:NS
 
-      # =========================
-      # Wait rollout (deployment monitor)
-      # =========================
       - name: Wait rollout
         shell: powershell
         env:
@@ -129,9 +153,6 @@ jobs:
         run: |
           kubectl rollout status deployment/monitor -n $env:NS --timeout=180s
 
-      # =========================
-      # Debug final
-      # =========================
       - name: Show services/pods
         shell: powershell
         env:
