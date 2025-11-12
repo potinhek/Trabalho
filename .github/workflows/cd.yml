@@ -1,4 +1,4 @@
-name: CD - Deploy to Kubernetes (Self-Hosted)
+name: CD - Deploy to Kubernetes
 
 on:
   workflow_run:
@@ -8,175 +8,86 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: cd-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   deploy:
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
-    runs-on: [self-hosted, windows]
+    runs-on: ubuntu-latest
     environment: production
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Vars
+      - name: Set vars
         id: vars
-        shell: powershell
+        shell: bash
         run: |
-          "IMAGE=seuusuario/monitor" >> $env:GITHUB_OUTPUT
-          "TAG_SHA=$($env:GITHUB_SHA.Substring(0,7))" >> $env:GITHUB_OUTPUT
-          $ns = "${{ secrets.K8S_NAMESPACE }}"; if ([string]::IsNullOrWhiteSpace($ns)) { $ns = "default" }
-          "NAMESPACE=$ns" >> $env:GITHUB_OUTPUT
+          echo "IMAGE=seuusuario/monitor" >> "$GITHUB_OUTPUT"
+          echo "TAG_SHA=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          NS="${{ secrets.K8S_NAMESPACE }}"
+          [ -z "$NS" ] && NS="default"
+          echo "NAMESPACE=$NS" >> "$GITHUB_OUTPUT"
 
-      - name: Ensure kubectl
-        shell: powershell
-        run: |
-          $ErrorActionPreference = 'Stop'
-          if (-not (Get-Command kubectl -ErrorAction SilentlyContinue)) {
-            Invoke-WebRequest -UseBasicParsing -Uri https://dl.k8s.io/release/stable.txt -OutFile stable.txt
-            $ver = Get-Content stable.txt
-            $url = "https://dl.k8s.io/release/$ver/bin/windows/amd64/kubectl.exe"
-            $bin = Join-Path $env:RUNNER_TEMP "bin"
-            New-Item -ItemType Directory -Force -Path $bin | Out-Null
-            Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile (Join-Path $bin "kubectl.exe")
-            "$bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding ascii -Append
-          }
-          kubectl version --client=true
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: v1.30.0
 
-      - name: Ensure Docker/driver
-        id: driver
-        shell: powershell
-        run: |
-          $drv = "docker"
-          if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { $drv = "hyperv" }
-          "DRIVER=$drv" | Out-File -FilePath $env:GITHUB_ENV -Append
-          Write-Host "Driver selecionado: $drv"
-
-      - name: Ensure Minikube running
-        shell: powershell
-        run: |
-          $ErrorActionPreference = 'Stop'
-          if (-not (Get-Command minikube -ErrorAction SilentlyContinue)) { throw "Minikube não está instalado." }
-
-          # Start se necessário
-          $ok = $false
-          try {
-            $st = minikube status --output=json | ConvertFrom-Json
-            if ($st.Host -eq 'Running' -and $st.Kubelet -eq 'Running' -and $st.APIServer -eq 'Running') { $ok = $true }
-          } catch { }
-          if (-not $ok) {
-            $drv = "${{ env.DRIVER }}"
-            Write-Host "Iniciando Minikube (--driver=$drv)..."
-            minikube start --driver=$drv
-          }
-
-          # Atualiza contexto do usuário
-          minikube update-context
-
-          # Se hyperv, reescreve server para <ip>:8443
-          if ("${{ env.DRIVER }}" -eq "hyperv") {
-            $cluster = minikube profile list --output=json | ConvertFrom-Json | Select-Object -ExpandProperty Valid
-            $ip = minikube ip
-            if (-not $ip) { throw "Não foi possível obter 'minikube ip'." }
-            $new = "https://$ip:8443"
-            $name = kubectl config view --minify -o jsonpath='{.clusters[0].name}'
-            kubectl config set-cluster $name --server=$new | Out-Null
-            $env:KUBECONFIG = "$env:USERPROFILE\.kube\config"
-          }
-
-          # Log do server atual
-          $srv = kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}'
-          Write-Host "API Server: $srv"
-
-      - name: API health (retry)
-        shell: powershell
-        run: |
-          $ErrorActionPreference = 'Stop'
-          for ($i=1; $i -le 30; $i++) {
-            try {
-              # Se driver docker falhar com kubectl, tenta via minikube kubectl --
-              if ("${{ env.DRIVER }}" -eq "docker") {
-                $h = minikube kubectl -- get --raw=/healthz 2>$null
-              } else {
-                $h = kubectl get --raw=/healthz 2>$null
-              }
-              if ($LASTEXITCODE -eq 0 -and $h -match "ok") { Write-Host "API Server OK"; break }
-            } catch { }
-            Write-Host "Aguardando API Server ($i/30)..."; Start-Sleep -Seconds 3
-            if ($i -eq 30) { throw "API Server indisponível (timeout)." }
-          }
-
-      # ============= Deploy (ramo docker usa 'minikube kubectl --') =============
-      - name: Create namespace (docker)
-        if: env.DRIVER == 'docker'
-        shell: powershell
+      - name: Configure kubeconfig
+        shell: bash
         env:
-          NS: ${{ steps.vars.outputs.NAMESPACE }}
+          KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}
+          KUBE_CONTEXT: ${{ secrets.KUBE_CONTEXT }}
         run: |
-          minikube kubectl -- get ns $env:NS *> $null
-          if ($LASTEXITCODE -ne 0) { minikube kubectl -- create ns $env:NS }
-          minikube kubectl -- get ns $env:NS
+          set -euo pipefail
+          mkdir -p "$HOME/.kube"
+          echo "$KUBE_CONFIG_DATA" | base64 -d > "$HOME/.kube/config"
+          chmod 600 "$HOME/.kube/config"
+          if [ -n "${KUBE_CONTEXT:-}" ]; then
+            kubectl config use-context "$KUBE_CONTEXT"
+          fi
+          echo -n "API Server: "
+          kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}'; echo
+          kubectl version --short
+          kubectl cluster-info
 
-      - name: Apply base manifests (docker)
-        if: env.DRIVER == 'docker'
-        shell: powershell
-        env:
-          NS: ${{ steps.vars.outputs.NAMESPACE }}
+      - name: Create namespace if not exists
+        shell: bash
         run: |
-          minikube kubectl -- apply -n $env:NS -f k8s/service.yaml               || $true
-          minikube kubectl -- apply -n $env:NS -f k8s/prometheus-deployment.yaml || $true
-          minikube kubectl -- apply -n $env:NS -f k8s/grafana-deployment.yaml    || $true
-          minikube kubectl -- apply -n $env:NS -f k8s/nginx-deployment.yaml      || $true
-          minikube kubectl -- apply -n $env:NS -f k8s/nginx-service.yaml         || $true
-          minikube kubectl -- apply -n $env:NS -f k8s/prometheus-config.yaml     || $true
+          kubectl get ns "${{ steps.vars.outputs.NAMESPACE }}" >/dev/null 2>&1 || \
+          kubectl create ns "${{ steps.vars.outputs.NAMESPACE }}"
 
-      - name: Apply app deployment (docker)
-        if: env.DRIVER == 'docker'
-        shell: powershell
-        env:
-          NS: ${{ steps.vars.outputs.NAMESPACE }}
+      # opcionais / idempotentes
+      - name: Apply base manifests (Service, Prometheus, Grafana, Nginx)
+        shell: bash
         run: |
-          minikube kubectl -- apply -n $env:NS -f k8s/deployment.yaml
-          minikube kubectl -- set image deployment/monitor monitor="${{ steps.vars.outputs.IMAGE }}:${{ steps.vars.outputs.TAG_SHA }}" -n $env:NS
-          minikube kubectl -- rollout status deployment/monitor -n $env:NS --timeout=180s
-          minikube kubectl -- get svc,deploy,pods -o wide -n $env:NS
+          kubectl apply -n "${{ steps.vars.outputs.NAMESPACE }}" -f k8s/service.yaml || true
+          kubectl apply -n "${{ steps.vars.outputs.NAMESPACE }}" -f k8s/prometheus-deployment.yaml || true
+          kubectl apply -n "${{ steps.vars.outputs.NAMESPACE }}" -f k8s/grafana-deployment.yaml || true
+          kubectl apply -n "${{ steps.vars.outputs.NAMESPACE }}" -f k8s/nginx-deployment.yaml || true
+          kubectl apply -n "${{ steps.vars.outputs.NAMESPACE }}" -f k8s/nginx-service.yaml || true
+          kubectl apply -n "${{ steps.vars.outputs.NAMESPACE }}" -f k8s/prometheus-config.yaml || true
 
-      # ============= Deploy (ramo hyperv usa 'kubectl' normal) =============
-      - name: Create namespace (hyperv)
-        if: env.DRIVER == 'hyperv'
-        shell: powershell
-        env:
-          NS: ${{ steps.vars.outputs.NAMESPACE }}
+      - name: Apply app deployment (first time)
+        shell: bash
         run: |
-          kubectl get ns $env:NS *> $null
-          if ($LASTEXITCODE -ne 0) { kubectl create ns $env:NS }
-          kubectl get ns $env:NS
+          kubectl apply -n "${{ steps.vars.outputs.NAMESPACE }}" -f k8s/deployment.yaml
 
-      - name: Apply base manifests (hyperv)
-        if: env.DRIVER == 'hyperv'
-        shell: powershell
-        env:
-          NS: ${{ steps.vars.outputs.NAMESPACE }}
+      - name: Set image to new tag
+        shell: bash
         run: |
-          kubectl apply -n $env:NS -f k8s/service.yaml               || $true
-          kubectl apply -n $env:NS -f k8s/prometheus-deployment.yaml || $true
-          kubectl apply -n $env:NS -f k8s/grafana-deployment.yaml    || $true
-          kubectl apply -n $env:NS -f k8s/nginx-deployment.yaml      || $true
-          kubectl apply -n $env:NS -f k8s/nginx-service.yaml         || $true
-          kubectl apply -n $env:NS -f k8s/prometheus-config.yaml     || $true
+          kubectl set image deployment/monitor \
+            monitor="${{ steps.vars.outputs.IMAGE }}:${{ steps.vars.outputs.TAG_SHA }}" \
+            -n "${{ steps.vars.outputs.NAMESPACE }}"
 
-      - name: Apply app deployment (hyperv)
-        if: env.DRIVER == 'hyperv'
-        shell: powershell
-        env:
-          NS: ${{ steps.vars.outputs.NAMESPACE }}
-          IMG: ${{ steps.vars.outputs.IMAGE }}
-          TAG: ${{ steps.vars.outputs.TAG_SHA }}
+      - name: Wait rollout
+        shell: bash
         run: |
-          kubectl apply -n $env:NS -f k8s/deployment.yaml
-          kubectl set image deployment/monitor monitor="$env:IMG:$env:TAG" -n $env:NS
-          kubectl rollout status deployment/monitor -n $env:NS --timeout=180s
-          kubectl get svc,deploy,pods -o wide -n $env:NS
+          kubectl rollout status deployment/monitor \
+            -n "${{ steps.vars.outputs.NAMESPACE }}" --timeout=180s
+
+      - name: Show services (debug)
+        shell: bash
+        run: |
+          kubectl get svc -n "${{ steps.vars.outputs.NAMESPACE }}"
+          kubectl get pods -o wide -n "${{ steps.vars.outputs.NAMESPACE }}"
