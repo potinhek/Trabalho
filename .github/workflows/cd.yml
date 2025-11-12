@@ -161,3 +161,4 @@ jobs:
           kubectl get svc -n $env:NS
           kubectl get deploy -n $env:NS
           kubectl get pods -o wide -n $env:NS
+          
