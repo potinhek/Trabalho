@@ -2,8 +2,9 @@ name: CD - Deploy to Kubernetes (Self-Hosted)
 
 on:
   workflow_run:
-    workflows: ["CI - Build & Push Docker"]
+    workflows: ["CI Build & Push Docker"]  # <-- IGUAL ao name do CI
     types: ["completed"]
+
 
 permissions:
   contents: read
