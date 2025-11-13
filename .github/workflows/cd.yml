@@ -26,7 +26,7 @@ jobs:
         id: vars
         shell: powershell
         run: |
-          "IMAGE=seuusuario/monitor" >> $env:GITHUB_OUTPUT
+          "IMAGE=jacksonugv/trabalho" >> $env:GITHUB_OUTPUT
           "TAG_SHA=$($env:GITHUB_SHA.Substring(0,7))" >> $env:GITHUB_OUTPUT
           $ns = "${{ secrets.K8S_NAMESPACE }}"
           if ([string]::IsNullOrWhiteSpace($ns)) { $ns = "default" }
@@ -64,7 +64,7 @@ jobs:
           if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
             $driver = "hyperv"
           }
-            
+
 
           # Sobe se necessário
           $ok = $false
