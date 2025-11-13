@@ -2,9 +2,8 @@ name: CD - Deploy to Kubernetes (Self-Hosted)
 
 on:
   workflow_run:
-    workflows: ["CI Build & Push Docker"]  # <-- IGUAL ao name do CI
+    workflows: ["CI Build & Push Docker"]  # mesmo nome do CI
     types: ["completed"]
-
 
 permissions:
   contents: read
@@ -16,7 +15,7 @@ concurrency:
 jobs:
   deploy:
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
-    runs-on: [self-hosted, windows]
+    runs-on: [self-hosted, Windows]  # ajuste "Windows" se o label do runner for diferente
     environment: production
 
     steps:
@@ -28,7 +27,11 @@ jobs:
         shell: powershell
         run: |
           "IMAGE=jacksonugv/trabalho" >> $env:GITHUB_OUTPUT
-          "TAG_SHA=$($env:GITHUB_SHA.Substring(0,7))" >> $env:GITHUB_OUTPUT
+
+          # usa o SHA do workflow de CI que terminou
+          $sha = "${{ github.event.workflow_run.head_sha }}"
+          "TAG_SHA=$($sha.Substring(0,7))" >> $env:GITHUB_OUTPUT
+
           $ns = "${{ secrets.K8S_NAMESPACE }}"
           if ([string]::IsNullOrWhiteSpace($ns)) { $ns = "default" }
           "NAMESPACE=$ns" >> $env:GITHUB_OUTPUT
@@ -60,14 +63,13 @@ jobs:
             throw "Minikube não está instalado no runner. Instale no mesmo host."
           }
 
-          # Detecta driver preferível
+          # Driver preferível
           $driver = "docker"
           if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
             $driver = "hyperv"
           }
 
-
-          # Sobe se necessário
+          # Verifica se já está rodando
           $ok = $false
           try {
             $st = minikube status --output=json | ConvertFrom-Json
@@ -81,7 +83,6 @@ jobs:
 
           # Garante kubeconfig do minikube e contexto
           minikube update-context
-          $env:KUBECONFIG = "$env:USERPROFILE\.kube\config"
 
           $ctx = kubectl config current-context
           Write-Host "Contexto atual: $ctx"
@@ -118,18 +119,34 @@ jobs:
           if ($LASTEXITCODE -ne 0) { kubectl create ns $env:NS }
           kubectl get ns $env:NS
 
-      # --- Manifests base (best-effort) ---
+      # --- Manifests base (best-effort, agora sem "|| $true") ---
       - name: Apply base manifests
         shell: powershell
         env:
           NS: ${{ steps.vars.outputs.NAMESPACE }}
         run: |
-          kubectl apply -n $env:NS -f k8s/service.yaml               || $true
-          kubectl apply -n $env:NS -f k8s/prometheus-deployment.yaml || $true
-          kubectl apply -n $env:NS -f k8s/grafana-deployment.yaml    || $true
-          kubectl apply -n $env:NS -f k8s/nginx-deployment.yaml      || $true
-          kubectl apply -n $env:NS -f k8s/nginx-service.yaml         || $true
-          kubectl apply -n $env:NS -f k8s/prometheus-config.yaml     || $true
+          $ErrorActionPreference = 'Continue'
+
+          $files = @(
+            "k8s/service.yaml",
+            "k8s/prometheus-deployment.yaml",
+            "k8s/grafana-deployment.yaml",
+            "k8s/nginx-deployment.yaml",
+            "k8s/nginx-service.yaml",
+            "k8s/prometheus-config.yaml"
+          )
+
+          foreach ($f in $files) {
+            if (Test-Path $f) {
+              Write-Host "Aplicando $f..."
+              kubectl apply -n $env:NS -f $f
+              if ($LASTEXITCODE -ne 0) {
+                Write-Host "⚠ Falha ao aplicar $f, continuando..."
+              }
+            } else {
+              Write-Host "⚠ Arquivo não encontrado: $f (ignorando)."
+            }
+          }
 
       # --- App principal ---
       - name: Apply app deployment
@@ -163,4 +180,3 @@ jobs:
           kubectl get svc -n $env:NS
           kubectl get deploy -n $env:NS
           kubectl get pods -o wide -n $env:NS
-          
