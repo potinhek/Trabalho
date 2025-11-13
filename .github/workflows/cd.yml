@@ -64,6 +64,7 @@ jobs:
           if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
             $driver = "hyperv"
           }
+            
 
           # Sobe se necessário
           $ok = $false
