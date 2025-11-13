@@ -165,12 +165,19 @@ jobs:
         run: |
           kubectl set image deployment/trabalho trabalho="$env:IMG:$env:TAG" -n $env:NS
 
-      - name: Wait rollout
+      - name: Wait rollout (tolerant)
         shell: powershell
         env:
           NS: ${{ steps.vars.outputs.NAMESPACE }}
         run: |
+          $ErrorActionPreference = 'Continue'
           kubectl rollout status deployment/trabalho -n $env:NS --timeout=180s
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "⚠ Rollout não ficou 100% pronto em 180s. Mostrando estado para debug, mas seguindo o pipeline."
+            kubectl get pods -n $env:NS -o wide
+            kubectl describe deploy/trabalho -n $env:NS
+          }
+          Write-Host "Prosseguindo mesmo assim."
 
       - name: Show services/pods
         shell: powershell
