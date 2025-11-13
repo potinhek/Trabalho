@@ -1,0 +1,94 @@
+﻿2025-11-13T23:13:10.0792994Z Current runner version: '2.329.0'
+2025-11-13T23:13:10.0809555Z Runner name: 'JACKSON'
+2025-11-13T23:13:10.0810529Z Runner group name: 'Default'
+2025-11-13T23:13:10.0811592Z Machine name: 'JACKSON'
+2025-11-13T23:13:10.0815221Z ##[group]GITHUB_TOKEN Permissions
+2025-11-13T23:13:10.0817846Z Contents: read
+2025-11-13T23:13:10.0818346Z Metadata: read
+2025-11-13T23:13:10.0818762Z ##[endgroup]
+2025-11-13T23:13:10.0820986Z Secret source: Actions
+2025-11-13T23:13:10.0821592Z Prepare workflow directory
+2025-11-13T23:13:10.1609792Z Prepare all required actions
+2025-11-13T23:13:10.1675702Z Getting action download info
+2025-11-13T23:13:10.8565676Z Download action repository 'actions/checkout@v4' (SHA:08eba0b27e820071cde6df949e0beb9ba4906955)
+2025-11-13T23:13:12.0901785Z Complete job name: deploy
+2025-11-13T23:13:12.3089199Z ##[group]Run actions/checkout@v4
+2025-11-13T23:13:12.3093704Z with:
+2025-11-13T23:13:12.3095356Z   repository: potinhek/Trabalho
+2025-11-13T23:13:12.3097634Z   token: ***
+2025-11-13T23:13:12.3098897Z   ssh-strict: true
+2025-11-13T23:13:12.3100093Z   ssh-user: git
+2025-11-13T23:13:12.3101419Z   persist-credentials: true
+2025-11-13T23:13:12.3102740Z   clean: true
+2025-11-13T23:13:12.3103894Z   sparse-checkout-cone-mode: true
+2025-11-13T23:13:12.3105254Z   fetch-depth: 1
+2025-11-13T23:13:12.3106309Z   fetch-tags: false
+2025-11-13T23:13:12.3107384Z   show-progress: true
+2025-11-13T23:13:12.3108454Z   lfs: false
+2025-11-13T23:13:12.3109452Z   submodules: false
+2025-11-13T23:13:12.3110488Z   set-safe-directory: true
+2025-11-13T23:13:12.3113384Z ##[endgroup]
+2025-11-13T23:13:14.9472972Z Syncing repository: potinhek/Trabalho
+2025-11-13T23:13:14.9477994Z ##[group]Getting Git version info
+2025-11-13T23:13:14.9480027Z Working directory is 'C:\Trabalho\actions-runner\_work\Trabalho\Trabalho'
+2025-11-13T23:13:14.9661637Z [command]"C:\Program Files\Git\cmd\git.exe" version
+2025-11-13T23:13:15.0357709Z git version 2.50.1.windows.1
+2025-11-13T23:13:15.0462215Z ##[endgroup]
+2025-11-13T23:13:15.0496663Z Copying 'C:\Users\jacks\.gitconfig' to 'C:\Trabalho\actions-runner\_work\_temp\fb27d0ae-a814-496b-acfa-a1cb831cefe8\.gitconfig'
+2025-11-13T23:13:15.0551788Z Temporarily overriding HOME='C:\Trabalho\actions-runner\_work\_temp\fb27d0ae-a814-496b-acfa-a1cb831cefe8' before making global git config changes
+2025-11-13T23:13:15.0570541Z Adding repository directory to the temporary git global config as a safe directory
+2025-11-13T23:13:15.0574351Z [command]"C:\Program Files\Git\cmd\git.exe" config --global --add safe.directory C:\Trabalho\actions-runner\_work\Trabalho\Trabalho
+2025-11-13T23:13:15.1365786Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --get remote.origin.url
+2025-11-13T23:13:15.1950080Z https://github.com/potinhek/Trabalho
+2025-11-13T23:13:15.2062654Z ##[group]Removing previously created refs, to avoid conflicts
+2025-11-13T23:13:15.2092706Z [command]"C:\Program Files\Git\cmd\git.exe" rev-parse --symbolic-full-name --verify --quiet HEAD
+2025-11-13T23:13:15.2610998Z refs/heads/main
+2025-11-13T23:13:15.2724828Z [command]"C:\Program Files\Git\cmd\git.exe" checkout --detach
+2025-11-13T23:13:15.3565085Z HEAD is now at 595cb35 trigger cd with minikube running
+2025-11-13T23:13:15.4628141Z ##[endgroup]
+2025-11-13T23:13:15.4636356Z [command]"C:\Program Files\Git\cmd\git.exe" submodule status
+2025-11-13T23:13:17.3395555Z ##[group]Cleaning the repository
+2025-11-13T23:13:17.3413207Z [command]"C:\Program Files\Git\cmd\git.exe" clean -ffdx
+2025-11-13T23:13:17.4256154Z [command]"C:\Program Files\Git\cmd\git.exe" reset --hard HEAD
+2025-11-13T23:13:17.6906975Z HEAD is now at 595cb35 trigger cd with minikube running
+2025-11-13T23:13:17.6966454Z ##[endgroup]
+2025-11-13T23:13:17.6977629Z ##[group]Disabling automatic garbage collection
+2025-11-13T23:13:17.6991022Z [command]"C:\Program Files\Git\cmd\git.exe" config --local gc.auto 0
+2025-11-13T23:13:17.7543150Z ##[endgroup]
+2025-11-13T23:13:17.7543807Z ##[group]Setting up auth
+2025-11-13T23:13:17.7558792Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --name-only --get-regexp core\.sshCommand
+2025-11-13T23:13:17.8092131Z [command]"C:\Program Files\Git\cmd\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :\""
+2025-11-13T23:13:18.8552761Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2025-11-13T23:13:18.9157884Z [command]"C:\Program Files\Git\cmd\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :\""
+2025-11-13T23:13:19.9970625Z [command]"C:\Program Files\Git\cmd\git.exe" config --local http.https://github.com/.extraheader "AUTHORIZATION: basic ***"
+2025-11-13T23:13:20.0628126Z ##[endgroup]
+2025-11-13T23:13:20.0628672Z ##[group]Fetching the repository
+2025-11-13T23:13:20.0642283Z [command]"C:\Program Files\Git\cmd\git.exe" -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +0dcab27f487d2cbc442c599ce531691f375ed2e4:refs/remotes/origin/main
+2025-11-13T23:17:34.1720220Z ##[error]error: RPC failed; curl 56 Recv failure: Connection was reset
+2025-11-13T23:17:34.1789106Z ##[error]error: 14585 bytes of body are still expected
+2025-11-13T23:17:34.1857463Z fetch-pack: unexpected disconnect while reading sideband packet
+2025-11-13T23:17:34.1879650Z ##[error]fatal: early EOF
+2025-11-13T23:17:34.2272770Z ##[error]fatal: fetch-pack: invalid index-pack output
+2025-11-13T23:17:34.3356526Z The process 'C:\Program Files\Git\cmd\git.exe' failed with exit code 128
+2025-11-13T23:17:34.3761436Z Waiting 18 seconds before trying again
+2025-11-13T23:17:52.3311024Z [command]"C:\Program Files\Git\cmd\git.exe" -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +0dcab27f487d2cbc442c599ce531691f375ed2e4:refs/remotes/origin/main
+2025-11-13T23:17:52.5135205Z ##[error]fatal: unable to access 'https://github.com/potinhek/Trabalho/': Could not resolve host: github.com
+2025-11-13T23:17:52.5249909Z The process 'C:\Program Files\Git\cmd\git.exe' failed with exit code 128
+2025-11-13T23:17:52.5250510Z Waiting 16 seconds before trying again
+2025-11-13T23:18:08.5356562Z [command]"C:\Program Files\Git\cmd\git.exe" -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +0dcab27f487d2cbc442c599ce531691f375ed2e4:refs/remotes/origin/main
+2025-11-13T23:18:08.6943544Z ##[error]fatal: unable to access 'https://github.com/potinhek/Trabalho/': Could not resolve host: github.com
+2025-11-13T23:18:08.7141616Z ##[error]The process 'C:\Program Files\Git\cmd\git.exe' failed with exit code 128
+2025-11-13T23:18:08.8132401Z Post job cleanup.
+2025-11-13T23:18:09.0981372Z [command]"C:\Program Files\Git\cmd\git.exe" version
+2025-11-13T23:18:09.1705655Z git version 2.50.1.windows.1
+2025-11-13T23:18:09.1861536Z Copying 'C:\Users\jacks\.gitconfig' to 'C:\Trabalho\actions-runner\_work\_temp\852b6c38-b843-4cfa-b250-c732129f42d2\.gitconfig'
+2025-11-13T23:18:09.1928422Z Temporarily overriding HOME='C:\Trabalho\actions-runner\_work\_temp\852b6c38-b843-4cfa-b250-c732129f42d2' before making global git config changes
+2025-11-13T23:18:09.1930082Z Adding repository directory to the temporary git global config as a safe directory
+2025-11-13T23:18:09.1952830Z [command]"C:\Program Files\Git\cmd\git.exe" config --global --add safe.directory C:\Trabalho\actions-runner\_work\Trabalho\Trabalho
+2025-11-13T23:18:09.2760228Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --name-only --get-regexp core\.sshCommand
+2025-11-13T23:18:09.3577526Z [command]"C:\Program Files\Git\cmd\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :\""
+2025-11-13T23:18:10.4602245Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2025-11-13T23:18:10.5179070Z http.https://github.com/.extraheader
+2025-11-13T23:18:10.5246329Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --unset-all http.https://github.com/.extraheader
+2025-11-13T23:18:10.5803925Z [command]"C:\Program Files\Git\cmd\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :\""
+2025-11-13T23:18:11.7602226Z Cleaning up orphan processes

@@ -1,0 +1,66 @@
+﻿2025-11-13T23:13:12.3088617Z ##[group]Run actions/checkout@v4
+2025-11-13T23:13:12.3093655Z with:
+2025-11-13T23:13:12.3095273Z   repository: potinhek/Trabalho
+2025-11-13T23:13:12.3097605Z   token: ***
+2025-11-13T23:13:12.3098886Z   ssh-strict: true
+2025-11-13T23:13:12.3100079Z   ssh-user: git
+2025-11-13T23:13:12.3101399Z   persist-credentials: true
+2025-11-13T23:13:12.3102729Z   clean: true
+2025-11-13T23:13:12.3103882Z   sparse-checkout-cone-mode: true
+2025-11-13T23:13:12.3105239Z   fetch-depth: 1
+2025-11-13T23:13:12.3106295Z   fetch-tags: false
+2025-11-13T23:13:12.3107368Z   show-progress: true
+2025-11-13T23:13:12.3108422Z   lfs: false
+2025-11-13T23:13:12.3109441Z   submodules: false
+2025-11-13T23:13:12.3110461Z   set-safe-directory: true
+2025-11-13T23:13:12.3113329Z ##[endgroup]
+2025-11-13T23:13:14.9472794Z Syncing repository: potinhek/Trabalho
+2025-11-13T23:13:14.9477930Z ##[group]Getting Git version info
+2025-11-13T23:13:14.9479784Z Working directory is 'C:\Trabalho\actions-runner\_work\Trabalho\Trabalho'
+2025-11-13T23:13:14.9661560Z [command]"C:\Program Files\Git\cmd\git.exe" version
+2025-11-13T23:13:15.0357604Z git version 2.50.1.windows.1
+2025-11-13T23:13:15.0462164Z ##[endgroup]
+2025-11-13T23:13:15.0496561Z Copying 'C:\Users\jacks\.gitconfig' to 'C:\Trabalho\actions-runner\_work\_temp\fb27d0ae-a814-496b-acfa-a1cb831cefe8\.gitconfig'
+2025-11-13T23:13:15.0551657Z Temporarily overriding HOME='C:\Trabalho\actions-runner\_work\_temp\fb27d0ae-a814-496b-acfa-a1cb831cefe8' before making global git config changes
+2025-11-13T23:13:15.0570430Z Adding repository directory to the temporary git global config as a safe directory
+2025-11-13T23:13:15.0574314Z [command]"C:\Program Files\Git\cmd\git.exe" config --global --add safe.directory C:\Trabalho\actions-runner\_work\Trabalho\Trabalho
+2025-11-13T23:13:15.1365681Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --get remote.origin.url
+2025-11-13T23:13:15.1949979Z https://github.com/potinhek/Trabalho
+2025-11-13T23:13:15.2062527Z ##[group]Removing previously created refs, to avoid conflicts
+2025-11-13T23:13:15.2092655Z [command]"C:\Program Files\Git\cmd\git.exe" rev-parse --symbolic-full-name --verify --quiet HEAD
+2025-11-13T23:13:15.2610939Z refs/heads/main
+2025-11-13T23:13:15.2724762Z [command]"C:\Program Files\Git\cmd\git.exe" checkout --detach
+2025-11-13T23:13:15.3565035Z HEAD is now at 595cb35 trigger cd with minikube running
+2025-11-13T23:13:15.4628103Z ##[endgroup]
+2025-11-13T23:13:15.4636325Z [command]"C:\Program Files\Git\cmd\git.exe" submodule status
+2025-11-13T23:13:17.3395518Z ##[group]Cleaning the repository
+2025-11-13T23:13:17.3413168Z [command]"C:\Program Files\Git\cmd\git.exe" clean -ffdx
+2025-11-13T23:13:17.4256075Z [command]"C:\Program Files\Git\cmd\git.exe" reset --hard HEAD
+2025-11-13T23:13:17.6906909Z HEAD is now at 595cb35 trigger cd with minikube running
+2025-11-13T23:13:17.6966410Z ##[endgroup]
+2025-11-13T23:13:17.6977582Z ##[group]Disabling automatic garbage collection
+2025-11-13T23:13:17.6990922Z [command]"C:\Program Files\Git\cmd\git.exe" config --local gc.auto 0
+2025-11-13T23:13:17.7543099Z ##[endgroup]
+2025-11-13T23:13:17.7543798Z ##[group]Setting up auth
+2025-11-13T23:13:17.7558735Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --name-only --get-regexp core\.sshCommand
+2025-11-13T23:13:17.8092031Z [command]"C:\Program Files\Git\cmd\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :\""
+2025-11-13T23:13:18.8552675Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2025-11-13T23:13:18.9157857Z [command]"C:\Program Files\Git\cmd\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :\""
+2025-11-13T23:13:19.9962005Z [command]"C:\Program Files\Git\cmd\git.exe" config --local http.https://github.com/.extraheader "AUTHORIZATION: basic ***"
+2025-11-13T23:13:20.0628092Z ##[endgroup]
+2025-11-13T23:13:20.0628669Z ##[group]Fetching the repository
+2025-11-13T23:13:20.0642246Z [command]"C:\Program Files\Git\cmd\git.exe" -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +0dcab27f487d2cbc442c599ce531691f375ed2e4:refs/remotes/origin/main
+2025-11-13T23:17:34.1720161Z ##[error]error: RPC failed; curl 56 Recv failure: Connection was reset
+2025-11-13T23:17:34.1789066Z ##[error]error: 14585 bytes of body are still expected
+2025-11-13T23:17:34.1857413Z fetch-pack: unexpected disconnect while reading sideband packet
+2025-11-13T23:17:34.1879610Z ##[error]fatal: early EOF
+2025-11-13T23:17:34.2272722Z ##[error]fatal: fetch-pack: invalid index-pack output
+2025-11-13T23:17:34.3356457Z The process 'C:\Program Files\Git\cmd\git.exe' failed with exit code 128
+2025-11-13T23:17:34.3761329Z Waiting 18 seconds before trying again
+2025-11-13T23:17:52.3310647Z [command]"C:\Program Files\Git\cmd\git.exe" -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +0dcab27f487d2cbc442c599ce531691f375ed2e4:refs/remotes/origin/main
+2025-11-13T23:17:52.5135141Z ##[error]fatal: unable to access 'https://github.com/potinhek/Trabalho/': Could not resolve host: github.com
+2025-11-13T23:17:52.5249854Z The process 'C:\Program Files\Git\cmd\git.exe' failed with exit code 128
+2025-11-13T23:17:52.5250506Z Waiting 16 seconds before trying again
+2025-11-13T23:18:08.5356517Z [command]"C:\Program Files\Git\cmd\git.exe" -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +0dcab27f487d2cbc442c599ce531691f375ed2e4:refs/remotes/origin/main
+2025-11-13T23:18:08.6943475Z ##[error]fatal: unable to access 'https://github.com/potinhek/Trabalho/': Could not resolve host: github.com
+2025-11-13T23:18:08.7141561Z ##[error]The process 'C:\Program Files\Git\cmd\git.exe' failed with exit code 128
